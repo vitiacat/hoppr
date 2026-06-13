@@ -15,7 +15,7 @@ Instead of dealing with JSON or TOML configs, you can manage your mod list in a 
 
 1. Initialize a manifest:
    ```bash
-   hoppr init --mc 1.21.1 --loader fabric
+   hoppr init 1.21.1 fabric
    ```
 2. Add mods:
    ```bash
