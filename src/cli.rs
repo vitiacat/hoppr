@@ -60,6 +60,10 @@ pub struct AddArgs {
     /// Restrict the mod to a specific side
     #[arg(short, long)]
     pub env: Option<EnvType>,
+
+    /// Do not automatically add dependencies
+    #[arg(long, default_value_t = false)]
+    pub no_deps: bool
 }
 
 #[derive(Args, Debug)]

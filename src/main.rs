@@ -90,17 +90,19 @@ fn add(args: &AddArgs, cli: &Cli) -> anyhow::Result<()> {
         let version = &versions[0];
         seen.insert(x.0);
 
-        version
-            .dependencies
-            .iter()
-            .filter(|x| x.dependency_type == "required")
-            .filter_map(|x| x.project_id.as_ref())
-            .for_each(|x| {
-                if seen.contains(x) {
-                    return;
-                }
-                queue.push_back((x.clone(), false))
-            });
+        if !args.no_deps {
+            version
+                .dependencies
+                .iter()
+                .filter(|x| x.dependency_type == "required")
+                .filter_map(|x| x.project_id.as_ref())
+                .for_each(|x| {
+                    if seen.contains(x) {
+                        return;
+                    }
+                    queue.push_back((x.clone(), false))
+                });
+        }
 
         let env = match args.env {
             None => None,
