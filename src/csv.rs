@@ -14,6 +14,9 @@ pub struct CsvEntry {
     pub id: String,
     pub version: Option<String>,
     pub environment: Option<String>,
+
+    #[serde(skip)]
+    pub is_version_fixed: bool
 }
 
 #[derive(Debug)]
@@ -65,6 +68,11 @@ pub fn read_csv(file_path: &PathBuf) -> anyhow::Result<(Vec<CsvEntry>, CsvMeta)>
                 .map(|captures| String::from(captures.get(1).unwrap().as_str()))
                 .unwrap_or(record.id);
         }
+        if let Some(version) = record.version.as_deref().and_then(|x| x.strip_prefix('=')) {
+            record.is_version_fixed = true;
+            record.version = Some(version.to_string());
+        }
+
         entries.push(record)
     }
 
@@ -73,7 +81,7 @@ pub fn read_csv(file_path: &PathBuf) -> anyhow::Result<(Vec<CsvEntry>, CsvMeta)>
 
 pub fn write_csv(
     file_path: &PathBuf,
-    entries: &Vec<CsvEntry>,
+    entries: Vec<CsvEntry>,
     meta: &CsvMeta,
 ) -> anyhow::Result<()> {
     let mut file =
@@ -86,7 +94,10 @@ pub fn write_csv(
     {
         let mut wtr = WriterBuilder::new().from_writer(&file);
 
-        for entry in entries {
+        for mut entry in entries {
+            if entry.is_version_fixed {
+                entry.version = entry.version.map(|x| format!("={x}"));
+            }
             wtr.serialize(entry)?;
         }
 

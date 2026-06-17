@@ -1,7 +1,7 @@
 use self::csv::{read_csv, write_csv};
-use crate::cli::{AddArgs, EnvType, InitArgs, ListArgs, RemoveArgs};
+use crate::cli::{AddArgs, EnvType, InitArgs, ListArgs, RemoveArgs, UpdateArgs};
 use crate::csv::CsvMeta;
-use crate::utils::{LoadProjectResult, find_version};
+use crate::utils::{CsvProjectEntry, LoadProjectResult, find_version};
 use anyhow::Context;
 use clap::Parser;
 use cli::{Cli, Commands, DownloadArgs, ExportJsonArgs};
@@ -24,6 +24,7 @@ fn main() {
         Commands::Init(args) => init(args, &cli),
         Commands::Add(args) => add(args, &cli),
         Commands::Remove(args) => remove(args, &cli),
+        Commands::Update(args) => update(args, &cli),
         Commands::Download(args) => download(args, &cli),
         Commands::ExportJson(args) => export(args, &cli),
         Commands::List(args) => list(args, &cli),
@@ -48,7 +49,7 @@ fn init(args: &InitArgs, cli: &Cli) -> anyhow::Result<()> {
 
     write_csv(
         &cli.file,
-        &vec![],
+        vec![],
         &CsvMeta {
             version: csv::CSV_VERSION,
             loader: args.loader.clone(),
@@ -115,6 +116,7 @@ fn add(args: &AddArgs, cli: &Cli) -> anyhow::Result<()> {
             id: project.slug.clone(),
             version: Some(version.version_number.clone()),
             environment: env,
+            is_version_fixed: args.fixed,
         })
     }
 
@@ -131,7 +133,7 @@ fn add(args: &AddArgs, cli: &Cli) -> anyhow::Result<()> {
 
     entries.extend(result);
 
-    write_csv(&cli.file, &entries, &meta)?;
+    write_csv(&cli.file, entries, &meta)?;
 
     Ok(())
 }
@@ -146,9 +148,98 @@ fn remove(args: &RemoveArgs, cli: &Cli) -> anyhow::Result<()> {
             entry.id, entry.version
         );
         entries.remove(index);
-        write_csv(&cli.file, &entries, &meta)?;
+        write_csv(&cli.file, entries, &meta)?;
     } else {
         println!("❌ Project {} not found", args.id);
+    }
+
+    Ok(())
+}
+
+fn update(args: &UpdateArgs, cli: &Cli) -> anyhow::Result<()> {
+    let Some(LoadProjectResult {
+        mut projects, meta, ..
+    }) = utils::load_projects(&cli.file, EnvType::Both)
+    else {
+        return Ok(());
+    };
+
+    struct Update {
+        index: usize,
+        new: String,
+    }
+    let mut updates: Vec<Update> = vec![];
+
+    let filtered_projects: Vec<(usize, &CsvProjectEntry)> = projects
+        .iter()
+        .enumerate()
+        .filter(|(_, x)| {
+            args.ids.is_empty()
+                || args.ids.contains(&x.project.slug)
+                || args.ids.contains(&x.project.id)
+        })
+        .map(|(idx, x)| (idx, x))
+        .collect();
+
+    let count = filtered_projects.len();
+
+    for (display_index, &(original_index, project)) in filtered_projects.iter().enumerate() {
+        println!(
+            "🔎  {} ({}/{})",
+            project.project.title,
+            display_index + 1,
+            count
+        );
+
+        if project.csv_entry.is_version_fixed {
+            println!("⏭️  Skipping '{}' (version is fixed)", project.project.title);
+            continue;
+        }
+
+        let Some(version) = &project.csv_entry.version else {
+            continue;
+        };
+
+        let versions = fetch_versions_for_project(&project.project.id, &meta);
+        if let Some(latest_version) = versions.first() {
+            if latest_version.version_number != *version {
+                updates.push(Update {
+                    index: original_index,
+                    new: latest_version.version_number.clone(),
+                });
+            }
+        } else {
+        }
+    }
+
+    let str = updates
+        .iter()
+        .map(|x| {
+            let p = &projects[x.index];
+            format!(
+                "- {}: {} -> {}",
+                p.project.title,
+                p.csv_entry.version.as_ref().unwrap_or(&"".to_string()),
+                x.new
+            )
+        })
+        .join("\n");
+    let count = updates.len();
+
+    if count == 0 {
+        println!("All projects up-to-date");
+        return Ok(())
+    }
+
+    if args.check {
+        println!("📦 {} projects can be updated: \n{}", count, str);
+    } else {
+        for update in updates {
+            projects[update.index].csv_entry.version = Some(update.new);
+        }
+        let entries = projects.into_iter().map(|x| x.csv_entry).collect_vec();
+        write_csv(&cli.file, entries, &meta)?;
+        println!("📦 {} projects updated: \n{}", count, str);
     }
 
     Ok(())

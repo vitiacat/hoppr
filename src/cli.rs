@@ -23,6 +23,9 @@ pub enum Commands {
     /// Remove a project from the manifest
     Remove(RemoveArgs),
 
+    /// Update projects to their latest compatible versions
+    Update(UpdateArgs),
+
     /// Download project files specified in the manifest
     Download(DownloadArgs),
 
@@ -63,7 +66,21 @@ pub struct AddArgs {
 
     /// Do not automatically add dependencies
     #[arg(long, default_value_t = false)]
-    pub no_deps: bool
+    pub no_deps: bool,
+
+    /// Lock the version to prevent the update command from modifying it
+    #[arg(short, long, default_value_t = false)]
+    pub fixed: bool
+}
+
+#[derive(Args, Debug)]
+pub struct UpdateArgs {
+    /// List of project IDs/slugs to update. If empty, all projects will be updated.
+    pub ids: Vec<String>,
+
+    /// Check for updates without modifying the manifest
+    #[arg(short, long)]
+    pub check: bool,
 }
 
 #[derive(Args, Debug)]
