@@ -4,10 +4,12 @@ use crate::modrinth;
 use crate::modrinth::{ModVersion, Project, VersionFile};
 use anyhow::{Context, Result};
 use indicatif::{ProgressBar, ProgressState, ProgressStyle};
+use std::collections::HashMap;
 use std::fs;
 use std::fs::File;
 use std::io::{Read, Write};
 use std::path::PathBuf;
+use itertools::Itertools;
 
 pub struct CsvProjectEntry {
     pub project: Project,
@@ -27,28 +29,35 @@ pub fn load_projects(file_path: &PathBuf, side: EnvType) -> Option<LoadProjectRe
         return None;
     }
 
-    let ids: Vec<&String> = slugs.iter().map(|x| &x.id).collect();
-    let projects = modrinth::fetch_projects(ids.as_slice());
-    if let Err(e) = projects {
-        println!("Failed to fetch projects: {}", e);
-        return None;
-    }
-    let projects = projects.unwrap();
+    let ids = slugs.iter().map(|x| &x.id).collect_vec();
+    let projects = match modrinth::fetch_projects(ids.as_slice()) {
+        Ok(val) => val,
+        Err(e) => {
+            println!("Failed to fetch projects: {}", e);
+            return None;
+        }
+    };
 
-    let paired_projects: Vec<(Project, CsvEntry)> = projects
+    let mut projects_map= HashMap::new();
+    for project in &projects {
+        projects_map.insert(project.id.as_str(), project);
+        projects_map.insert(project.slug.as_str(), project);
+    }
+
+    let paired_projects = slugs
         .into_iter()
-        .map(|project| {
-            let csv_entry = slugs
-                .iter()
-                .find(|entry| entry.id == project.id || entry.id == project.slug)
-                .cloned()
-                .expect(&format!(
-                    "Failed to map projects (CsvEntry not found: {})",
-                    project.id
-                ));
-            (project, csv_entry)
+        .filter_map(|entry| {
+            let project = match projects_map.get(entry.id.as_str()) {
+                Some(&project) => Some(project.clone()),
+                None => {
+                    eprintln!("⚠ Project with ID/slug '{}' not found in API response.", entry.id);
+                    None
+                }
+            };
+
+            project.map(|p| (p, entry))
         })
-        .collect();
+        .collect_vec();
 
     // filter by env
     let (filtered, excluded): (Vec<(Project, CsvEntry)>, Vec<(Project, CsvEntry)>) =
@@ -81,10 +90,10 @@ pub fn load_projects(file_path: &PathBuf, side: EnvType) -> Option<LoadProjectRe
             }
         });
 
-    let selected_projects: Vec<CsvProjectEntry> = filtered
+    let selected_projects = filtered
         .into_iter()
         .map(|(project, csv_entry)| CsvProjectEntry { project, csv_entry })
-        .collect();
+        .collect_vec();
 
     Some(LoadProjectResult {
         projects: selected_projects,

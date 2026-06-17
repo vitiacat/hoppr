@@ -6,7 +6,7 @@ use std::time::Duration;
 const PROJECTS_URL: &str = "https://api.modrinth.com/v2/projects";
 const VERSIONS_URL: &str = "https://api.modrinth.com/v2/project/%s/version";
 
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Debug, Clone)]
 pub struct Project {
     pub id: String,
     pub slug: String,
